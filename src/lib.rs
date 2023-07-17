@@ -11,7 +11,7 @@ extern crate derive_builder;
 #[macro_use]
 extern crate serde_derive;
 
-use log::{error, info, LevelFilter};
+use log::{error, info};
 use rand::{thread_rng, Rng};
 use tokio::io;
 use tokio::net::{TcpListener, TcpStream};
@@ -24,9 +24,6 @@ use crate::proxy_target::{SimpleCachingDnsResolver, SimpleTcpConnector, TargetCo
 use crate::tunnel::{
     relay_connections, ConnectionTunnel, TunnelCtx, TunnelCtxBuilder, TunnelStats,
 };
-use log4rs::append::console::ConsoleAppender;
-use log4rs::config::{Appender, Root};
-use log4rs::Config;
 use std::io::{Error, ErrorKind};
 use tokio::io::{AsyncRead, AsyncWrite};
 
