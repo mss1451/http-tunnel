@@ -15,7 +15,6 @@ HTTP Tunnel/TCP Proxy example written in Rust.
 [dependencies]
 tokio-native-tls = "0.3"
 native-tls = "0.2"
-clap = { version = "4.3", features = ["derive"] }
 regex = "1.9"
 rand = "0.8"
 yaml-rust = "0.4"
