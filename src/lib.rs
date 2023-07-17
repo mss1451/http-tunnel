@@ -30,77 +30,98 @@ use log4rs::Config;
 use std::io::{Error, ErrorKind};
 use tokio::io::{AsyncRead, AsyncWrite};
 
-mod configuration;
-mod http_tunnel_codec;
-mod proxy_target;
-mod relay;
-mod tunnel;
+pub use native_tls;
+pub use regex;
+
+pub mod configuration;
+pub mod http_tunnel_codec;
+pub mod proxy_target;
+pub mod relay;
+pub mod tunnel;
 
 type DnsResolver = SimpleCachingDnsResolver;
 
-#[tokio::main]
-async fn main() -> io::Result<()> {
-    init_logger();
+pub struct HttpTunnel {
+    config: ProxyConfiguration,
+    dns_resolver: SimpleCachingDnsResolver
+}
 
-    let proxy_configuration = ProxyConfiguration::from_command_line().map_err(|e| {
-        println!("Failed to process parameters. See ./log/application.log for details");
-        e
-    })?;
-
-    info!("Starting listener on: {}", proxy_configuration.bind_address);
-
-    let mut tcp_listener = TcpListener::bind(&proxy_configuration.bind_address)
-        .await
-        .map_err(|e| {
-            error!(
-                "Error binding address {}: {}",
-                &proxy_configuration.bind_address, e
-            );
-            e
-        })?;
-
-    let dns_resolver = SimpleCachingDnsResolver::new(
-        proxy_configuration
+impl HttpTunnel {
+    pub fn new(config: ProxyConfiguration) -> Self {
+        let dns_resolver = DnsResolver::new(
+            config
             .tunnel_config
             .target_connection
             .dns_cache_ttl,
-    );
+        );
+        Self { config, dns_resolver }
+    }
 
-    match &proxy_configuration.mode {
-        ProxyMode::Http => {
-            serve_plain_text(proxy_configuration, &mut tcp_listener, dns_resolver).await?;
-        }
-        ProxyMode::Https(tls_identity) => {
-            let acceptor = native_tls::TlsAcceptor::new(tls_identity.clone()).map_err(|e| {
-                error!("Error setting up TLS {}", e);
-                Error::from(ErrorKind::InvalidInput)
+    pub async fn run(&self) -> io::Result<()> {
+        info!("Starting listener on: {}", self.config.bind_address);
+
+        let mut tcp_listener = TcpListener::bind(&self.config.bind_address)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Error binding address {}: {}",
+                    &self.config.bind_address, e
+                );
+                e
             })?;
-
-            let tls_acceptor = TlsAcceptor::from(acceptor);
-
-            serve_tls(
-                proxy_configuration,
-                &mut tcp_listener,
-                tls_acceptor,
-                dns_resolver,
-            )
-            .await?;
+        match &self.config.mode {
+            ProxyMode::Http => {
+                self.serve_http(tcp_listener).await?;
+            },
+            ProxyMode::Https(tls_identity) => {
+                self.serve_https(tls_identity.clone(), tcp_listener).await?;
+            },
+            ProxyMode::Tcp(destination) => {
+                let destination = destination.clone();
+                serve_tcp(
+                    self.config.clone(),
+                    &mut tcp_listener,
+                    self.dns_resolver.clone(),
+                    destination,
+                )
+                    .await?;
+            },
         }
-        ProxyMode::Tcp(d) => {
-            let destination = d.clone();
-            serve_tcp(
-                proxy_configuration,
-                &mut tcp_listener,
-                dns_resolver,
-                destination,
-            )
+
+        info!("Proxy stopped");
+        Ok(())
+    }
+
+    async fn serve_http(&self, mut tcp_listener: TcpListener) -> io::Result<()> {
+        serve_plain_text(
+            self.config.clone(),
+            &mut tcp_listener,
+            self.dns_resolver.clone()
+        ).await?;
+        Ok(())
+    }
+
+    async fn serve_https(
+            &self,
+            tls_identity: native_tls::Identity,
+            mut tcp_listener: TcpListener
+    ) -> io::Result<()> {
+        let acceptor = native_tls::TlsAcceptor::new(tls_identity.clone()).map_err(|e| {
+            error!("Error setting up TLS {}", e);
+            Error::from(ErrorKind::InvalidInput)
+        })?;
+
+        let tls_acceptor = TlsAcceptor::from(acceptor);
+
+        serve_tls(
+            self.config.clone(),
+            &mut tcp_listener,
+            tls_acceptor,
+            self.dns_resolver.clone(),
+        )
             .await?;
-        }
-    };
-
-    info!("Proxy stopped");
-
-    Ok(())
+        Ok(())
+    }
 }
 
 async fn serve_tls(
@@ -305,25 +326,5 @@ fn report_tunnel_metrics(ctx: TunnelCtx, stats: io::Result<TunnelStats>) {
             info!(target: "metrics", "{}", serde_json::to_string(&s).expect("JSON serialization failed"));
         }
         Err(_) => error!("Failed to get stats for TID={}", ctx),
-    }
-}
-
-fn init_logger() {
-    let logger_configuration = "./config/log4rs.yaml";
-    if let Err(e) = log4rs::init_file(logger_configuration, Default::default()) {
-        println!(
-            "Cannot initialize logger from {logger_configuration}, error=[{e}]. Logging to the console.");
-        let config = Config::builder()
-            .appender(
-                Appender::builder()
-                    .build("application", Box::new(ConsoleAppender::builder().build())),
-            )
-            .build(
-                Root::builder()
-                    .appender("application")
-                    .build(LevelFilter::Info),
-            )
-            .unwrap();
-        log4rs::init_config(config).expect("Bug: bad default config");
     }
 }
