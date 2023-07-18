@@ -38,6 +38,7 @@ pub mod http_tunnel_codec;
 pub mod proxy_target;
 pub mod relay;
 pub mod tunnel;
+pub mod auth;
 
 type DnsResolver = SimpleCachingDnsResolver;
 
