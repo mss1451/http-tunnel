@@ -5,7 +5,10 @@
 /// <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 /// option. This file may not be copied, modified, or distributed
 /// except according to those terms.
-use crate::relay::{RelayPolicy, NO_BANDWIDTH_LIMIT, NO_TIMEOUT};
+use crate::{
+    relay::{RelayPolicy, NO_BANDWIDTH_LIMIT, NO_TIMEOUT},
+    auth::ProxyAuthorization
+};
 use native_tls::Identity;
 use regex::Regex;
 use std::time::Duration;
@@ -45,6 +48,7 @@ pub enum ProxyMode {
 pub struct ProxyConfiguration {
     pub mode: ProxyMode,
     pub bind_address: String,
+    pub auth: Option<ProxyAuthorization>,
     pub tunnel_config: TunnelConfig,
 }
 
