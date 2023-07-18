@@ -229,7 +229,7 @@ impl HttpConnectRequest {
 
          let opt_auth_header_res = request.headers.iter()
             .find_map(|header| {
-                if header.name.eq("Proxy-Authorization") {
+                if header.name.to_lowercase().eq("proxy-authorization") {
                     Some(header.value)
                 } else {
                     None
