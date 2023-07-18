@@ -59,10 +59,18 @@ impl Decoder for HttpTunnelCodec {
 
         match HttpConnectRequest::parse(src) {
             Ok(parsed_request) => {
-                if self.auth.ne(&parsed_request.auth) {
-                    debug!("Client unauthorized, CTX={}", self.tunnel_ctx);
-                    Err(EstablishTunnelResult::ProxyAuthenticationRequired)
-                } else if !self.enabled_targets.is_match(&parsed_request.uri) {
+                match (self.auth.as_ref(), parsed_request.auth.as_ref()) {
+                    (Some(_), None) => {
+                        debug!("Credentials missing, CTX={}", self.tunnel_ctx);
+                        return Err(EstablishTunnelResult::ProxyAuthenticationRequired);
+                    },
+                    (Some(configured), Some(incoming)) if configured.ne(&incoming) => {
+                        debug!("Wrong credentials, CTX={}", self.tunnel_ctx);
+                        return Err(EstablishTunnelResult::Unauthorized);
+                    },
+                    _ => ()
+                }
+                if !self.enabled_targets.is_match(&parsed_request.uri) {
                     debug!(
                         "Target `{}` is not allowed. Allowed: `{}`, CTX={}",
                         parsed_request.uri, self.enabled_targets, self.tunnel_ctx
@@ -91,6 +99,7 @@ impl Encoder<EstablishTunnelResult> for HttpTunnelCodec {
         item: EstablishTunnelResult,
         dst: &mut BytesMut,
     ) -> Result<(), Self::Error> {
+        let mut how_to_auth_header = None::<&'static str>;
         let (code, message) = match item {
             EstablishTunnelResult::Ok => (200, "OK"),
             EstablishTunnelResult::OkWithNugget => {
@@ -99,23 +108,39 @@ impl Encoder<EstablishTunnelResult> for HttpTunnelCodec {
             }
             EstablishTunnelResult::BadRequest => (400, "BAD_REQUEST"),
             EstablishTunnelResult::Unauthorized => {
+                how_to_auth_header = Some("WWW-Authenticate");
                 (401, "UNAUTHORIZED")
             },
             EstablishTunnelResult::Forbidden => (403, "FORBIDDEN"),
             EstablishTunnelResult::OperationNotAllowed => (405, "NOT_ALLOWED"),
-            EstablishTunnelResult::ProxyAuthenticationRequired => (
-                407,
-                "PROXY_AUTHENTICATION_REQUIRED"
-            ),
+            EstablishTunnelResult::ProxyAuthenticationRequired => {
+                how_to_auth_header = Some("Proxy-Authenticate");
+                (407, "PROXY_AUTHENTICATION_REQUIRED")
+            },
             EstablishTunnelResult::RequestTimeout => (408, "TIMEOUT"),
             EstablishTunnelResult::TooManyRequests => (429, "TOO_MANY_REQUESTS"),
             EstablishTunnelResult::ServerError => (500, "SERVER_ERROR"),
             EstablishTunnelResult::BadGateway => (502, "BAD_GATEWAY"),
             EstablishTunnelResult::GatewayTimeout => (504, "GATEWAY_TIMEOUT"),
         };
-
-        dst.write_fmt(format_args!("HTTP/1.1 {} {}\r\n\r\n", code as u32, message))
-            .map_err(|_| std::io::Error::from(std::io::ErrorKind::Other))
+        if let Some(how_to_auth_header) = how_to_auth_header {
+            dst.write_fmt(
+                    format_args!(
+                        concat!(
+                            "HTTP/1.1 {} {}\r\n",
+                            "{}: Basic realm=\"Access to internal site\"",
+                            "\r\n\r\n"
+                        ),
+                        code as u32,
+                        message,
+                        how_to_auth_header
+                    )
+                )
+                .map_err(|_| std::io::Error::from(std::io::ErrorKind::Other))
+        } else {
+            dst.write_fmt(format_args!("HTTP/1.1 {} {}\r\n\r\n", code as u32, message))
+                .map_err(|_| std::io::Error::from(std::io::ErrorKind::Other))
+        }
     }
 }
 
