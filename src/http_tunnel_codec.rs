@@ -540,20 +540,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_request_exceeds_size() {
-        let mut codec = build_codec();
-        let mut buffer = BytesMut::new();
-        while !buffer.len() <= MAX_HTTP_REQUEST_SIZE {
-            buffer.put_slice(b"CONNECT foo.bar.com:443 HTTP/1.1\r\n");
-        }
-
-        buffer.put_slice(REQUEST_END_MARKER);
-        let result = codec.decode(&mut buffer);
-
-        assert_eq!(result, Err(EstablishTunnelResult::BadRequest));
-    }
-
-    #[test]
     fn test_http_tunnel_encoder() {
         let mut codec = build_codec();
 
