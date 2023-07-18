@@ -94,6 +94,10 @@ impl Encoder<EstablishTunnelResult> for HttpTunnelCodec {
             EstablishTunnelResult::BadRequest => (400, "BAD_REQUEST"),
             EstablishTunnelResult::Forbidden => (403, "FORBIDDEN"),
             EstablishTunnelResult::OperationNotAllowed => (405, "NOT_ALLOWED"),
+            EstablishTunnelResult::ProxyAuthenticationRequired => (
+                407,
+                "PROXY_AUTHENTICATION_REQUIRED"
+            ),
             EstablishTunnelResult::RequestTimeout => (408, "TIMEOUT"),
             EstablishTunnelResult::TooManyRequests => (429, "TOO_MANY_REQUESTS"),
             EstablishTunnelResult::ServerError => (500, "SERVER_ERROR"),
