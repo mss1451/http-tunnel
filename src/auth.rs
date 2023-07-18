@@ -16,7 +16,7 @@ impl ProxyAuthorization {
 
     /// Tries parsing Proxy-Authorization header value.
     pub fn from_proxy_auth(header_value: &str) -> Result<Self, ProxyAuthError> {
-        let pattern_str = r"^basic (?<base64>[A-Za-z0-9+/]+={0,2}$)";
+        let pattern_str = r"^(basic|Basic|BASIC) (?<base64>[A-Za-z0-9+/]+={0,2}$)";
         let pattern = Regex::new(pattern_str).expect("invalid regex");
 
         let b64 = pattern.captures(header_value).and_then(|captures| {
