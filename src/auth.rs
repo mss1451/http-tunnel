@@ -3,7 +3,7 @@ use std::{error::Error, fmt::Display, string::FromUtf8Error};
 use base64::{DecodeError, Engine};
 use regex::Regex;
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProxyAuthorization {
     pub username: String,
     pub password: String
