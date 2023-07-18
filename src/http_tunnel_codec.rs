@@ -98,6 +98,9 @@ impl Encoder<EstablishTunnelResult> for HttpTunnelCodec {
                 return Ok(());
             }
             EstablishTunnelResult::BadRequest => (400, "BAD_REQUEST"),
+            EstablishTunnelResult::Unauthorized => {
+                (401, "UNAUTHORIZED")
+            },
             EstablishTunnelResult::Forbidden => (403, "FORBIDDEN"),
             EstablishTunnelResult::OperationNotAllowed => (405, "NOT_ALLOWED"),
             EstablishTunnelResult::ProxyAuthenticationRequired => (

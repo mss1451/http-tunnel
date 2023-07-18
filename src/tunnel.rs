@@ -30,6 +30,7 @@ pub enum EstablishTunnelResult {
     OkWithNugget,
     /// Malformed request
     BadRequest,
+    Unauthorized,
     /// Target is not allowed
     Forbidden,
     /// Unsupported operation, however valid for the protocol.
