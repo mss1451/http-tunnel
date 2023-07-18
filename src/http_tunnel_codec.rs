@@ -17,7 +17,6 @@ use tokio_util::codec::{Decoder, Encoder};
 use crate::proxy_target::Nugget;
 use crate::tunnel::{EstablishTunnelResult, TunnelCtx, TunnelTarget};
 use core::fmt;
-use std::str::Split;
 
 const REQUEST_END_MARKER: &[u8] = b"\r\n\r\n";
 /// A reasonable value to limit possible header size.
@@ -28,9 +27,7 @@ const MAX_HTTP_REQUEST_SIZE: usize = 16384;
 struct HttpConnectRequest {
     uri: String,
     nugget: Option<Nugget>,
-    // out of scope of this demo, but let's put it here for extensibility
-    // e.g. Authorization/Policies headers
-    // headers: Vec<(String, String)>,
+    //headers: Vec<(String, String)>,
 }
 
 #[derive(Builder, Eq, PartialEq, Debug, Clone)]
@@ -163,82 +160,48 @@ impl From<Error> for EstablishTunnelResult {
 impl HttpConnectRequest {
     pub fn parse(http_request: &[u8]) -> Result<Self, EstablishTunnelResult> {
         HttpConnectRequest::precondition_size(http_request)?;
-        HttpConnectRequest::precondition_legal_characters(http_request)?;
 
-        let http_request_as_string =
-            String::from_utf8(http_request.to_vec()).expect("Contains only ASCII");
+        let mut headers = [httparse::EMPTY_HEADER; 256];
+        let mut request = httparse::Request::new(&mut headers);
+        let status = request.parse(http_request)
+            .map_err(|_| EstablishTunnelResult::BadRequest)?;
 
-        let mut lines = http_request_as_string.split("\r\n");
+        match status {
+            httparse::Status::Partial => {
+                // The request is not supposed to be partial at this point.
+                return Err(EstablishTunnelResult::ServerError);
+            },
+            _ => ()
+        };
 
-        let request_line = HttpConnectRequest::parse_request_line(
-            lines
-                .next()
-                .expect("At least a single line is present at this point"),
-        )?;
+        let version_minor = request.version.ok_or(EstablishTunnelResult::BadRequest)?;
+        let version = match version_minor {
+            0 => "HTTP/1.0",
+            1 => "HTTP/1.1",
+            _ => {
+                // Unreachable due to httparse's limitation but let's not panic.
+                return Err(EstablishTunnelResult::ServerError);
+            }
+        };
+        Self::check_version(version)?;
 
-        let has_nugget = request_line.3;
+        let method = request.method.ok_or(EstablishTunnelResult::BadRequest)?;
+        let uri = request.path.ok_or(EstablishTunnelResult::BadRequest)?.to_owned();
+        let has_nugget = Self::check_method(method)?;
 
         if has_nugget {
             Ok(Self {
-                uri: HttpConnectRequest::extract_destination_host(&mut lines, request_line.1)
-                    .unwrap_or_else(|| request_line.1.to_string()),
+                uri,
                 nugget: Some(Nugget::new(http_request)),
             })
         } else {
             Ok(Self {
-                uri: request_line.1.to_string(),
+                uri,
                 nugget: None,
             })
         }
     }
 
-    fn extract_destination_host(lines: &mut Split<&str>, endpoint: &str) -> Option<String> {
-        const HOST_HEADER: &str = "host:";
-
-        lines
-            .find(|line| line.to_ascii_lowercase().starts_with(HOST_HEADER))
-            .map(|line| line[HOST_HEADER.len()..].trim())
-            .map(|host| {
-                let mut host = String::from(host);
-                if host.rfind(':').is_none() {
-                    let default_port = if endpoint.to_ascii_lowercase().starts_with("https://") {
-                        ":443"
-                    } else {
-                        ":80"
-                    };
-                    host.push_str(default_port);
-                }
-                host
-            })
-    }
-
-    fn parse_request_line(
-        request_line: &str,
-    ) -> Result<(&str, &str, &str, bool), EstablishTunnelResult> {
-        let request_line_items = request_line.split(' ').collect::<Vec<&str>>();
-        HttpConnectRequest::precondition_well_formed(request_line, &request_line_items)?;
-
-        let method = request_line_items[0];
-        let uri = request_line_items[1];
-        let version = request_line_items[2];
-
-        let has_nugget = HttpConnectRequest::check_method(method)?;
-        HttpConnectRequest::check_version(version)?;
-
-        Ok((method, uri, version, has_nugget))
-    }
-
-    fn precondition_well_formed(
-        request_line: &str,
-        request_line_items: &[&str],
-    ) -> Result<(), EstablishTunnelResult> {
-        if request_line_items.len() != 3 {
-            debug!("Bad request line: `{:?}`", request_line,);
-            Err(EstablishTunnelResult::BadRequest)
-        } else {
-            Ok(())
-        }
-    }
 
     fn check_version(version: &str) -> Result<(), EstablishTunnelResult> {
         if version != "HTTP/1.1" {
@@ -262,20 +225,6 @@ impl HttpConnectRequest {
     #[cfg(feature = "plain_text")]
     fn check_method(method: &str) -> Result<bool, EstablishTunnelResult> {
         Ok(method != "CONNECT")
-    }
-
-    fn precondition_legal_characters(http_request: &[u8]) -> Result<(), EstablishTunnelResult> {
-        for b in http_request {
-            match b {
-                // non-ascii characters don't make sense in this context
-                32..=126 | 9 | 10 | 13 => {}
-                _ => {
-                    debug!("Bad request header. Illegal character: {:#04x}", b);
-                    return Err(EstablishTunnelResult::BadRequest);
-                }
-            }
-        }
-        Ok(())
     }
 
     fn precondition_size(http_request: &[u8]) -> Result<(), EstablishTunnelResult> {
