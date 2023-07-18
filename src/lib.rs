@@ -300,6 +300,7 @@ async fn tunnel_stream<C: AsyncRead + AsyncWrite + Send + Unpin + 'static>(
                 .allowed_targets
                 .clone(),
         )
+        .auth(config.auth.clone())
         .build()
         .expect("HttpTunnelCodecBuilder failed");
 

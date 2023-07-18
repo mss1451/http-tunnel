@@ -14,6 +14,7 @@ use regex::Regex;
 use tokio::io::{Error, ErrorKind};
 use tokio_util::codec::{Decoder, Encoder};
 
+use crate::auth::ProxyAuthorization;
 use crate::proxy_target::Nugget;
 use crate::tunnel::{EstablishTunnelResult, TunnelCtx, TunnelTarget};
 use core::fmt;
@@ -27,7 +28,7 @@ const MAX_HTTP_REQUEST_SIZE: usize = 16384;
 struct HttpConnectRequest {
     uri: String,
     nugget: Option<Nugget>,
-    //headers: Vec<(String, String)>,
+    auth: Option<ProxyAuthorization>
 }
 
 #[derive(Builder, Eq, PartialEq, Debug, Clone)]
@@ -43,6 +44,8 @@ pub struct HttpTunnelTarget {
 pub struct HttpTunnelCodec {
     tunnel_ctx: TunnelCtx,
     enabled_targets: Regex,
+    #[builder(default)]
+    auth: Option<ProxyAuthorization>
 }
 
 impl Decoder for HttpTunnelCodec {
@@ -56,7 +59,10 @@ impl Decoder for HttpTunnelCodec {
 
         match HttpConnectRequest::parse(src) {
             Ok(parsed_request) => {
-                if !self.enabled_targets.is_match(&parsed_request.uri) {
+                if self.auth.ne(&parsed_request.auth) {
+                    debug!("Client unauthorized, CTX={}", self.tunnel_ctx);
+                    Err(EstablishTunnelResult::ProxyAuthenticationRequired)
+                } else if !self.enabled_targets.is_match(&parsed_request.uri) {
                     debug!(
                         "Target `{}` is not allowed. Allowed: `{}`, CTX={}",
                         parsed_request.uri, self.enabled_targets, self.tunnel_ctx
@@ -193,15 +199,37 @@ impl HttpConnectRequest {
         let uri = request.path.ok_or(EstablishTunnelResult::BadRequest)?.to_owned();
         let has_nugget = Self::check_method(method)?;
 
+         let opt_auth_header_res = request.headers.iter()
+            .find_map(|header| {
+                if header.name.eq("Proxy-Authorization") {
+                    Some(header.value)
+                } else {
+                    None
+                }
+            })
+            .map(|value_bytes| String::from_utf8(value_bytes.to_vec()));
+
+        let auth = if let Some(auth_header_res) = opt_auth_header_res {
+            let auth_header = auth_header_res
+                .map_err(|_| EstablishTunnelResult::BadRequest)?;
+            let auth = ProxyAuthorization::from_proxy_auth(&auth_header)
+                .map_err(|_| EstablishTunnelResult::BadRequest)?;
+            Some(auth)
+        } else {
+            None
+        };
+
         if has_nugget {
             Ok(Self {
                 uri,
                 nugget: Some(Nugget::new(http_request)),
+                auth
             })
         } else {
             Ok(Self {
                 uri,
                 nugget: None,
+                auth
             })
         }
     }
