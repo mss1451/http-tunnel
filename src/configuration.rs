@@ -5,30 +5,29 @@
 /// <LICENSE-MIT or https://opensource.org/licenses/MIT>, at your
 /// option. This file may not be copied, modified, or distributed
 /// except according to those terms.
-use crate::relay::{RelayPolicy, NO_BANDWIDTH_LIMIT, NO_TIMEOUT};
+use crate::{
+    relay::{RelayPolicy, NO_BANDWIDTH_LIMIT, NO_TIMEOUT},
+    auth::ProxyAuthorization
+};
 use native_tls::Identity;
 use regex::Regex;
 use std::time::Duration;
 
-#[derive(Deserialize, Clone)]
+#[derive(Clone)]
 pub struct ClientConnectionConfig {
-    #[serde(with = "humantime_serde")]
     pub initiation_timeout: Duration,
     pub relay_policy: RelayPolicy,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Clone)]
 pub struct TargetConnectionConfig {
-    #[serde(with = "humantime_serde")]
     pub dns_cache_ttl: Duration,
-    #[serde(with = "serde_regex")]
     pub allowed_targets: Regex,
-    #[serde(with = "humantime_serde")]
     pub connect_timeout: Duration,
     pub relay_policy: RelayPolicy,
 }
 
-#[derive(Deserialize, Clone)]
+#[derive(Clone)]
 pub struct TunnelConfig {
     pub client_connection: ClientConnectionConfig,
     pub target_connection: TargetConnectionConfig,
@@ -45,6 +44,7 @@ pub enum ProxyMode {
 pub struct ProxyConfiguration {
     pub mode: ProxyMode,
     pub bind_address: String,
+    pub auth: Option<ProxyAuthorization>,
     pub tunnel_config: TunnelConfig,
 }
 

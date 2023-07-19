@@ -35,6 +35,7 @@ pub mod http_tunnel_codec;
 pub mod proxy_target;
 pub mod relay;
 pub mod tunnel;
+pub mod auth;
 
 type DnsResolver = SimpleCachingDnsResolver;
 
@@ -296,6 +297,7 @@ async fn tunnel_stream<C: AsyncRead + AsyncWrite + Send + Unpin + 'static>(
                 .allowed_targets
                 .clone(),
         )
+        .auth(config.auth.clone())
         .build()
         .expect("HttpTunnelCodecBuilder failed");
 

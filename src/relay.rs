@@ -54,9 +54,8 @@ pub struct RelayStats {
 /// Relay policy is meant to protect targets and proxy servers from
 /// different sorts of abuse. Currently it only checks too slow or too fast connections,
 /// which may lead to different capacity issues.
-#[derive(Builder, Deserialize, Clone)]
+#[derive(Builder, Clone)]
 pub struct RelayPolicy {
-    #[serde(with = "humantime_serde")]
     pub idle_timeout: Duration,
     /// Min bytes-per-minute (bpm)
     pub min_rate_bpm: u64,

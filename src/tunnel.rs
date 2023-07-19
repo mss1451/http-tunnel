@@ -30,6 +30,7 @@ pub enum EstablishTunnelResult {
     OkWithNugget,
     /// Malformed request
     BadRequest,
+    Unauthorized,
     /// Target is not allowed
     Forbidden,
     /// Unsupported operation, however valid for the protocol.
@@ -42,6 +43,7 @@ pub enum EstablishTunnelResult {
     GatewayTimeout,
     /// Busy. Try again later.
     TooManyRequests,
+    ProxyAuthenticationRequired,
     /// Any other error. E.g. an abrupt I/O error.
     ServerError,
 }
