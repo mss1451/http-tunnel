@@ -247,11 +247,12 @@ async fn handle_client_tls_connection(
     stream: TcpStream,
     dns_resolver: DnsResolver,
 ) -> io::Result<()> {
-    let timed_tls_handshake = timeout(
-        config.tunnel_config.client_connection.initiation_timeout,
-        tls_acceptor.accept(stream),
-    )
-    .await;
+    let opt_initiation_timeout = config.tunnel_config.client_connection.initiation_timeout;
+    let timed_tls_handshake = if let Some(initiation_timeout) = opt_initiation_timeout {
+        timeout(initiation_timeout, tls_acceptor.accept(stream)).await
+    } else {
+        Ok(tls_acceptor.accept(stream).await)
+    };
 
     if let Ok(tls_result) = timed_tls_handshake {
         match tls_result {

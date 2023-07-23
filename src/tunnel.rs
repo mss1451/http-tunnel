@@ -170,12 +170,14 @@ where
 
         let response_sent = match response {
             EstablishTunnelResult::OkWithNugget => true,
-            _ => timeout(
-                configuration.client_connection.initiation_timeout,
-                write.send(response.clone()),
-            )
-            .await
-            .is_ok(),
+            _ => {
+                let opt_initiation_timeout = configuration.client_connection.initiation_timeout;
+                if let Some(initiation_timeout) = opt_initiation_timeout {
+                    timeout(initiation_timeout, write.send(response.clone())).await.is_ok()
+                } else {
+                    write.send(response.clone()).await.is_ok()
+                }
+            },
         };
 
         if response_sent {
@@ -202,11 +204,12 @@ where
         EstablishTunnelResult,
         Option<<T as TargetConnector>::Stream>,
     ) {
-        let connect_request = timeout(
-            configuration.client_connection.initiation_timeout,
-            read.next(),
-        )
-        .await;
+        let opt_initiation_timeout = configuration.client_connection.initiation_timeout;
+        let connect_request = if let Some(initiation_timeout) = opt_initiation_timeout {
+            timeout(initiation_timeout, read.next()).await
+        } else {
+            Ok(read.next().await)
+        };
 
         let response;
         let mut target = None;
@@ -252,15 +255,18 @@ where
     async fn connect_to_target(
         &mut self,
         target: T::Target,
-        connect_timeout: Duration,
+        connect_timeout: Option<Duration>,
     ) -> Result<T::Stream, EstablishTunnelResult> {
         debug!(
             "Establishing HTTP tunnel target connection: {}, CTX={}",
             target, self.tunnel_ctx,
         );
 
-        let timed_connection_result =
-            timeout(connect_timeout, self.target_connector.connect(&target)).await;
+        let timed_connection_result = if let Some(connect_timeout) = connect_timeout {
+            timeout(connect_timeout, self.target_connector.connect(&target)).await
+        } else {
+            Ok(self.target_connector.connect(&target).await)
+        };
 
         if timed_connection_result.is_err() {
             Err(EstablishTunnelResult::GatewayTimeout)
@@ -766,21 +772,21 @@ mod test {
     fn build_config(default_timeout: Duration) -> TunnelConfig {
         TunnelConfig {
             client_connection: ClientConnectionConfig {
-                initiation_timeout: default_timeout,
+                initiation_timeout: Some(default_timeout),
                 relay_policy: RelayPolicy {
-                    idle_timeout: default_timeout,
-                    min_rate_bpm: 0,
-                    max_rate_bps: 120410065,
+                    idle_timeout: Some(default_timeout),
+                    min_rate_bpm: None,
+                    max_rate_bps: Some(120410065),
                 },
             },
             target_connection: TargetConnectionConfig {
-                dns_cache_ttl: default_timeout,
+                dns_cache_ttl: Some(default_timeout),
                 allowed_targets: Regex::new(r"foo\.bar:80").unwrap(),
-                connect_timeout: default_timeout,
+                connect_timeout: Some(default_timeout),
                 relay_policy: RelayPolicy {
-                    idle_timeout: default_timeout,
-                    min_rate_bpm: 0,
-                    max_rate_bps: 170310180,
+                    idle_timeout: Some(default_timeout),
+                    min_rate_bpm: None,
+                    max_rate_bps: Some(170310180),
                 },
             },
         }

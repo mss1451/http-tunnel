@@ -37,7 +37,7 @@ pub trait DnsResolver {
 
 #[derive(Clone, Builder)]
 pub struct SimpleTcpConnector<D, R: DnsResolver> {
-    connect_timeout: Duration,
+    connect_timeout: Option<Duration>,
     tunnel_ctx: TunnelCtx,
     dns_resolver: R,
     #[builder(setter(skip))]
@@ -49,7 +49,7 @@ pub struct Nugget {
     data: Arc<Vec<u8>>,
 }
 
-type CachedSocketAddrs = (Vec<SocketAddr>, u128);
+type CachedSocketAddrs = (Vec<SocketAddr>, Option<u128>);
 
 /// Caching DNS resolution to minimize DNS look-ups.
 /// The cache has relaxed consistency, it allows concurrent DNS look-ups of the same key,
@@ -60,7 +60,7 @@ type CachedSocketAddrs = (Vec<SocketAddr>, u128);
 pub struct SimpleCachingDnsResolver {
     // mostly reads, occasional writes
     cache: Arc<RwLock<HashMap<String, CachedSocketAddrs>>>,
-    ttl: Duration,
+    ttl: Option<Duration>,
     start_time: Instant,
 }
 
@@ -78,16 +78,21 @@ where
 
         let addr = self.dns_resolver.resolve(target_addr).await?;
 
-        if let Ok(tcp_stream) = timeout(self.connect_timeout, TcpStream::connect(addr)).await {
+        let tcp_stream_result = if let Some(connect_timeout) = self.connect_timeout {
+            timeout(connect_timeout, TcpStream::connect(addr)).await
+        } else {
+            Ok(TcpStream::connect(addr).await)
+        };
+        if let Ok(tcp_stream) = tcp_stream_result {
             let mut stream = tcp_stream?;
             stream.nodelay()?;
             if target.has_nugget() {
-                if let Ok(written_successfully) = timeout(
-                    self.connect_timeout,
-                    stream.write_all(&target.nugget().data()),
-                )
-                .await
-                {
+                let write_result = if let Some(connect_timeout) = self.connect_timeout {
+                    timeout(connect_timeout, stream.write_all(&target.nugget().data())).await
+                } else {
+                    Ok(stream.write_all(&target.nugget().data()).await)
+                };
+                if let Ok(written_successfully) = write_result {
                     written_successfully?;
                 } else {
                     error!(
@@ -122,7 +127,7 @@ impl<D, R> SimpleTcpConnector<D, R>
 where
     R: DnsResolver,
 {
-    pub fn new(dns_resolver: R, connect_timeout: Duration, tunnel_ctx: TunnelCtx) -> Self {
+    pub fn new(dns_resolver: R, connect_timeout: Option<Duration>, tunnel_ctx: TunnelCtx) -> Self {
         Self {
             dns_resolver,
             connect_timeout,
@@ -133,7 +138,7 @@ where
 }
 
 impl SimpleCachingDnsResolver {
-    pub fn new(ttl: Duration) -> Self {
+    pub fn new(ttl: Option<Duration>) -> Self {
         Self {
             cache: Arc::new(RwLock::new(HashMap::new())),
             ttl,
@@ -152,9 +157,14 @@ impl SimpleCachingDnsResolver {
             None => None,
             Some((cached, expiration)) => {
                 // expiration with jitter to avoid expiration "waves"
-                let expiration_jitter = *expiration + thread_rng().gen_range(0..5_000);
-                if Instant::now().duration_since(self.start_time).as_millis() < expiration_jitter {
-                    Some(self.pick(cached))
+                if let Some(expiration) = expiration {
+                    let expiration_jitter = *expiration + thread_rng().gen_range(0..5_000);
+                    let elapsed = Instant::now().duration_since(self.start_time).as_millis();
+                    if elapsed < expiration_jitter {
+                        Some(self.pick(cached))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -168,11 +178,16 @@ impl SimpleCachingDnsResolver {
         let resolved = SimpleCachingDnsResolver::resolve(target).await?;
 
         let mut map = self.cache.write().await;
+        let duration = if let Some(ttl) = self.ttl {
+            Some(Instant::now().duration_since(self.start_time).as_millis() + ttl.as_millis())
+        } else {
+            None
+        };
         map.insert(
             target.to_string(),
             (
                 resolved.clone(),
-                Instant::now().duration_since(self.start_time).as_millis() + self.ttl.as_millis(),
+                duration,
             ),
         );
 

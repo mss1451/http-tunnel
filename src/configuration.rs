@@ -6,7 +6,7 @@
 /// option. This file may not be copied, modified, or distributed
 /// except according to those terms.
 use crate::{
-    relay::{RelayPolicy, NO_BANDWIDTH_LIMIT, NO_TIMEOUT},
+    relay::RelayPolicy,
     auth::ProxyAuthorization
 };
 use native_tls::Identity;
@@ -15,15 +15,15 @@ use std::time::Duration;
 
 #[derive(Clone)]
 pub struct ClientConnectionConfig {
-    pub initiation_timeout: Duration,
+    pub initiation_timeout: Option<Duration>,
     pub relay_policy: RelayPolicy,
 }
 
 #[derive(Clone)]
 pub struct TargetConnectionConfig {
-    pub dns_cache_ttl: Duration,
+    pub dns_cache_ttl: Option<Duration>,
     pub allowed_targets: Regex,
-    pub connect_timeout: Duration,
+    pub connect_timeout: Option<Duration>,
     pub relay_policy: RelayPolicy,
 }
 
@@ -53,21 +53,21 @@ impl Default for TunnelConfig {
         // by default no restrictions
         Self {
             client_connection: ClientConnectionConfig {
-                initiation_timeout: NO_TIMEOUT,
+                initiation_timeout: None,
                 relay_policy: RelayPolicy {
-                    idle_timeout: NO_TIMEOUT,
-                    min_rate_bpm: 0,
-                    max_rate_bps: NO_BANDWIDTH_LIMIT,
+                    idle_timeout: None,
+                    min_rate_bpm: None,
+                    max_rate_bps: None,
                 },
             },
             target_connection: TargetConnectionConfig {
-                dns_cache_ttl: NO_TIMEOUT,
+                dns_cache_ttl: None,
                 allowed_targets: Regex::new(".*").expect("Bug: bad default regexp"),
-                connect_timeout: NO_TIMEOUT,
+                connect_timeout: None,
                 relay_policy: RelayPolicy {
-                    idle_timeout: NO_TIMEOUT,
-                    min_rate_bpm: 0,
-                    max_rate_bps: NO_BANDWIDTH_LIMIT,
+                    idle_timeout: None,
+                    min_rate_bpm: None,
+                    max_rate_bps: None,
                 },
             },
         }
