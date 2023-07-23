@@ -62,6 +62,7 @@ pub struct SimpleCachingDnsResolver {
     cache: Arc<RwLock<HashMap<String, CachedSocketAddrs>>>,
     ttl: Option<Duration>,
     start_time: Instant,
+    ipv4_only: bool
 }
 
 #[async_trait]
@@ -138,11 +139,12 @@ where
 }
 
 impl SimpleCachingDnsResolver {
-    pub fn new(ttl: Option<Duration>) -> Self {
+    pub fn new(ttl: Option<Duration>, ipv4_only: bool) -> Self {
         Self {
             cache: Arc::new(RwLock::new(HashMap::new())),
             ttl,
             start_time: Instant::now(),
+            ipv4_only
         }
     }
 
@@ -175,7 +177,7 @@ impl SimpleCachingDnsResolver {
     }
 
     async fn resolve_and_cache(&mut self, target: &str) -> io::Result<SocketAddr> {
-        let resolved = SimpleCachingDnsResolver::resolve(target).await?;
+        let resolved = SimpleCachingDnsResolver::resolve(target, self.ipv4_only).await?;
 
         let mut map = self.cache.write().await;
         let duration = if let Some(ttl) = self.ttl {
@@ -194,9 +196,12 @@ impl SimpleCachingDnsResolver {
         Ok(self.pick(&resolved))
     }
 
-    async fn resolve(target: &str) -> io::Result<Vec<SocketAddr>> {
+    async fn resolve(target: &str, ipv4_only: bool) -> io::Result<Vec<SocketAddr>> {
         debug!("Resolving DNS {}", target,);
-        let resolved: Vec<SocketAddr> = tokio::net::lookup_host(target).await?.collect();
+        let resolved: Vec<SocketAddr> = tokio::net::lookup_host(target)
+            .await?
+            .filter(|addr| addr.is_ipv4() || (addr.is_ipv6() && !ipv4_only))
+            .collect();
         info!("Resolved DNS {} to {:?}", target, resolved);
 
         if resolved.is_empty() {

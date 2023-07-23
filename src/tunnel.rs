@@ -788,6 +788,7 @@ mod test {
                     min_rate_bpm: None,
                     max_rate_bps: Some(170310180),
                 },
+                ipv4_only: false
             },
         }
     }

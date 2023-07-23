@@ -51,6 +51,10 @@ impl HttpTunnel {
             .tunnel_config
             .target_connection
             .dns_cache_ttl,
+            config
+            .tunnel_config
+            .target_connection
+            .ipv4_only
         );
         Self { config, dns_resolver }
     }

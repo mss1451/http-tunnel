@@ -25,6 +25,7 @@ pub struct TargetConnectionConfig {
     pub allowed_targets: Regex,
     pub connect_timeout: Option<Duration>,
     pub relay_policy: RelayPolicy,
+    pub ipv4_only: bool
 }
 
 #[derive(Clone)]
@@ -69,6 +70,7 @@ impl Default for TunnelConfig {
                     min_rate_bpm: None,
                     max_rate_bps: None,
                 },
+                ipv4_only: false
             },
         }
     }
