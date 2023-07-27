@@ -17,6 +17,8 @@ use std::time::Duration;
 pub struct ClientConnectionConfig {
     pub initiation_timeout: Option<Duration>,
     pub relay_policy: RelayPolicy,
+    /// Accept HTTP/1.0 (not specially handled)
+    pub accept_http_v1_0: bool
 }
 
 #[derive(Clone)]
@@ -60,6 +62,7 @@ impl Default for TunnelConfig {
                     min_rate_bpm: None,
                     max_rate_bps: None,
                 },
+                accept_http_v1_0: false
             },
             target_connection: TargetConnectionConfig {
                 dns_cache_ttl: None,

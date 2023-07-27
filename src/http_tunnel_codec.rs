@@ -264,7 +264,7 @@ impl HttpConnectRequest {
 
 
     fn check_version(version: &str) -> Result<(), EstablishTunnelResult> {
-        if version != "HTTP/1.1" {
+        if version != "HTTP/1.1" || version != "HTTP/1.0" {
             debug!("Bad version {}", version);
             Err(EstablishTunnelResult::BadRequest)
         } else {

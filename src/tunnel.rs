@@ -778,6 +778,7 @@ mod test {
                     min_rate_bpm: None,
                     max_rate_bps: Some(120410065),
                 },
+                accept_http_v1_0: false
             },
             target_connection: TargetConnectionConfig {
                 dns_cache_ttl: Some(default_timeout),
