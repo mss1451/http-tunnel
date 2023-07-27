@@ -45,7 +45,8 @@ pub struct HttpTunnelCodec {
     tunnel_ctx: TunnelCtx,
     enabled_targets: Regex,
     #[builder(default)]
-    auth: Option<ProxyAuthorization>
+    auth: Option<ProxyAuthorization>,
+    accept_http_v1_0: bool
 }
 
 impl Decoder for HttpTunnelCodec {
@@ -57,7 +58,7 @@ impl Decoder for HttpTunnelCodec {
             return Ok(None);
         }
 
-        match HttpConnectRequest::parse(src) {
+        match HttpConnectRequest::parse(src, self.accept_http_v1_0) {
             Ok(parsed_request) => {
                 match (self.auth.as_ref(), parsed_request.auth.as_ref()) {
                     (Some(_), None) => {
@@ -196,7 +197,10 @@ impl From<Error> for EstablishTunnelResult {
 
 /// Basic HTTP Request parser which only purpose is to parse `CONNECT` requests.
 impl HttpConnectRequest {
-    pub fn parse(http_request: &[u8]) -> Result<Self, EstablishTunnelResult> {
+    pub fn parse(
+        http_request: &[u8],
+        accept_http_v1_0: bool
+    ) -> Result<Self, EstablishTunnelResult> {
         HttpConnectRequest::precondition_size(http_request)?;
 
         let mut headers = [httparse::EMPTY_HEADER; 256];
@@ -221,7 +225,7 @@ impl HttpConnectRequest {
                 return Err(EstablishTunnelResult::ServerError);
             }
         };
-        Self::check_version(version)?;
+        Self::check_version(version, accept_http_v1_0)?;
 
         let method = request.method.ok_or(EstablishTunnelResult::BadRequest)?;
         let uri = request.path.ok_or(EstablishTunnelResult::BadRequest)?.to_owned();
@@ -263,12 +267,12 @@ impl HttpConnectRequest {
     }
 
 
-    fn check_version(version: &str) -> Result<(), EstablishTunnelResult> {
-        if version != "HTTP/1.1" || version != "HTTP/1.0" {
+    fn check_version(version: &str, accept_http_v1_0: bool) -> Result<(), EstablishTunnelResult> {
+        if version == "HTTP/1.1" || (accept_http_v1_0 && version == "HTTP/1.0") {
+            Ok(())
+        } else {
             debug!("Bad version {}", version);
             Err(EstablishTunnelResult::BadRequest)
-        } else {
-            Ok(())
         }
     }
 
