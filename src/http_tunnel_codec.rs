@@ -46,6 +46,7 @@ pub struct HttpTunnelCodec {
     enabled_targets: Regex,
     #[builder(default)]
     auth: Option<ProxyAuthorization>,
+    #[builder(default)]
     accept_http_v1_0: bool
 }
 
